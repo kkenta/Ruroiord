@@ -1,0 +1,23 @@
+[Unit]
+Description=Ruroiord Desktop Application
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/Ruroiord
+ExecStart=/home/pi/Ruroiord/start-ruroiord.sh
+Restart=on-failure
+RestartSec=10
+Environment=NODE_ENV=production
+
+# セキュリティ設定
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/home/pi/Ruroiord
+
+[Install]
+WantedBy=multi-user.target 

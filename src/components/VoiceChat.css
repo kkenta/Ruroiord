@@ -1,0 +1,165 @@
+.voice-chat {
+  background: var(--background-secondary);
+  border-radius: 8px;
+  padding: 16px;
+  margin: 16px;
+  border: 1px solid var(--background-tertiary);
+}
+
+.voice-chat-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.voice-chat-header h3 {
+  margin: 0;
+  color: var(--text-normal);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.join-voice-btn {
+  background: var(--brand-color);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 8px 16px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.join-voice-btn:hover:not(:disabled) {
+  background: var(--brand-color-hover);
+}
+
+.join-voice-btn:disabled {
+  background: var(--background-tertiary);
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+.leave-voice-btn {
+  background: var(--danger-color);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 8px 16px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.leave-voice-btn:hover {
+  background: var(--danger-color-hover);
+}
+
+.voice-controls {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+  justify-content: center;
+}
+
+.mute-btn,
+.deafen-btn,
+.record-btn {
+  background: var(--background-tertiary);
+  border: none;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  font-size: 16px;
+}
+
+.mute-btn:hover,
+.deafen-btn:hover,
+.record-btn:hover {
+  background: var(--background-floating);
+}
+
+.mute-btn.muted {
+  background: var(--danger-color);
+  color: white;
+}
+
+.deafen-btn.deafened {
+  background: var(--danger-color);
+  color: white;
+}
+
+.record-btn.recording {
+  background: var(--danger-color);
+  color: white;
+  animation: pulse 1s infinite;
+}
+
+@keyframes pulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.1); }
+  100% { transform: scale(1); }
+}
+
+.voice-users {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.voice-user {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: var(--background-tertiary);
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.voice-user.local {
+  background: var(--brand-color);
+  color: white;
+}
+
+.voice-user.remote {
+  background: var(--background-tertiary);
+  color: var(--text-normal);
+}
+
+.voice-user .username {
+  font-weight: 500;
+}
+
+.voice-user .status {
+  display: flex;
+  gap: 4px;
+  font-size: 10px;
+}
+
+/* レスポンシブデザイン */
+@media (max-width: 768px) {
+  .voice-chat {
+    margin: 8px;
+    padding: 12px;
+  }
+  
+  .voice-controls {
+    gap: 4px;
+  }
+  
+  .mute-btn,
+  .deafen-btn {
+    width: 36px;
+    height: 36px;
+    font-size: 14px;
+  }
+} 

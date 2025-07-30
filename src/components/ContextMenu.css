@@ -1,0 +1,76 @@
+.context-menu-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 999;
+}
+
+.context-menu {
+  position: fixed;
+  background: var(--discord-light);
+  border: 1px solid var(--discord-lighter);
+  border-radius: 6px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  padding: 6px 0;
+  min-width: 180px;
+  z-index: 1000;
+  animation: contextMenuFadeIn 0.1s ease-out;
+}
+
+@keyframes contextMenuFadeIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -100%) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -100%) scale(1);
+  }
+}
+
+.context-menu-header {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--discord-lighter);
+  margin-bottom: 4px;
+}
+
+.context-menu-header .channel-name {
+  color: var(--text-primary);
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.context-menu-separator {
+  height: 1px;
+  background: var(--discord-lighter);
+  margin: 4px 0;
+}
+
+.context-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+  text-align: left;
+}
+
+.context-menu-item:hover {
+  background: var(--discord-darker);
+}
+
+.context-menu-item.delete {
+  color: var(--discord-red);
+}
+
+.context-menu-item.delete:hover {
+  background: rgba(240, 71, 71, 0.1);
+} 
