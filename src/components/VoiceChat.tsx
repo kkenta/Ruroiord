@@ -7,6 +7,8 @@ interface VoiceUser {
   userId: string;
   username: string;
   socketId: string;
+  isMuted?: boolean;
+  isDeafened?: boolean;
 }
 
 interface VoiceChatProps {
@@ -21,6 +23,8 @@ const VoiceChat: React.FC<VoiceChatProps> = ({ channelId }) => {
   const [isMuted, setIsMuted] = useState(false);
   const [isDeafened, setIsDeafened] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
+  const [isScreenSharing, setIsScreenSharing] = useState(false);
+  const [screenStream, setScreenStream] = useState<MediaStream | null>(null);
   
   const localStreamRef = useRef<MediaStream | null>(null);
   const peerConnectionsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
@@ -93,6 +97,11 @@ const VoiceChat: React.FC<VoiceChatProps> = ({ channelId }) => {
   const leaveVoiceChannel = () => {
     if (!socket || !isConnected) return;
 
+    // 画面共有を停止
+    if (isScreenSharing) {
+      stopScreenSharing();
+    }
+
     // ローカルストリームを停止
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach(track => track.stop());
@@ -117,7 +126,22 @@ const VoiceChat: React.FC<VoiceChatProps> = ({ channelId }) => {
       const audioTrack = localStreamRef.current.getAudioTracks()[0];
       if (audioTrack) {
         audioTrack.enabled = !audioTrack.enabled;
-        setIsMuted(!audioTrack.enabled);
+        const newMutedState = !audioTrack.enabled;
+        setIsMuted(newMutedState);
+        
+        console.log(`🎤 ミュート状態変更: ${newMutedState ? 'ON' : 'OFF'}`);
+        
+        // 他のユーザーにミュート状態を送信
+        if (socket && isInVoiceChannel) {
+          socket.emit('voice-user-update', {
+            channelId,
+            userId: user?.id,
+            username: user?.username,
+            isMuted: newMutedState,
+            isDeafened: isDeafened
+          });
+          console.log(`📡 ミュート状態を送信: ${newMutedState ? 'ON' : 'OFF'}`);
+        }
       }
     }
   };
@@ -144,6 +168,18 @@ const VoiceChat: React.FC<VoiceChatProps> = ({ channelId }) => {
       audio.muted = newDeafenedState;
       console.log(`🔊 Audio要素音量設定: ${audio.id} = ${newDeafenedState ? '0' : '1.0'}`);
     });
+
+    // 他のユーザーにデフ状態を送信
+    if (socket && isInVoiceChannel) {
+      socket.emit('voice-user-update', {
+        channelId,
+        userId: user?.id,
+        username: user?.username,
+        isMuted: isMuted,
+        isDeafened: newDeafenedState
+      });
+      console.log(`📡 デフ状態を送信: ${newDeafenedState ? 'ON' : 'OFF'}`);
+    }
   };
 
   // 録音開始
@@ -189,6 +225,130 @@ const VoiceChat: React.FC<VoiceChatProps> = ({ channelId }) => {
       mediaRecorderRef.current.stop();
       setIsRecording(false);
       console.log('⏹️ 録音を停止しました');
+    }
+  };
+
+  // 画面共有開始
+  const startScreenSharing = async () => {
+    try {
+      console.log('🖥️ 画面共有開始中...');
+      
+      // ボイスチャンネルに参加しているかチェック
+      if (!isInVoiceChannel) {
+        alert('画面共有を開始するには、まずボイスチャンネルに参加してください');
+        return;
+      }
+
+      // 画面共有のオプションを設定
+      const displayMediaOptions = {
+        video: {
+          cursor: 'always',
+          displaySurface: 'monitor' as const
+        },
+        audio: false
+      };
+
+      const stream = await navigator.mediaDevices.getDisplayMedia(displayMediaOptions);
+      console.log('📺 画面共有ストリーム取得成功:', stream.getVideoTracks().length, '個のビデオトラック');
+      
+      setScreenStream(stream);
+      setIsScreenSharing(true);
+      
+      // 画面共有ストリームをピア接続に追加
+      const videoTrack = stream.getVideoTracks()[0];
+      if (videoTrack) {
+        console.log('🔗 ピア接続数:', peerConnectionsRef.current.size);
+        
+        peerConnectionsRef.current.forEach((connection, socketId) => {
+          try {
+            const sender = connection.getSenders().find(s => s.track?.kind === 'video');
+            if (sender) {
+              console.log(`🔄 既存のビデオトラックを置換: ${socketId}`);
+              sender.replaceTrack(videoTrack);
+            } else {
+              console.log(`➕ 新しいビデオトラックを追加: ${socketId}`);
+              connection.addTrack(videoTrack, stream);
+            }
+          } catch (trackError) {
+            console.error(`❌ トラック追加エラー (${socketId}):`, trackError);
+          }
+        });
+      }
+
+      // 画面共有停止時の処理
+      stream.getVideoTracks()[0].onended = () => {
+        console.log('🛑 画面共有が停止されました');
+        stopScreenSharing();
+      };
+
+      console.log('✅ 画面共有を開始しました');
+      
+      // サーバーに画面共有開始を通知
+      if (socket && isInVoiceChannel) {
+        socket.emit('screen-share-start', {
+          channelId,
+          userId: user?.id,
+          username: user?.username,
+          stream: stream
+        });
+      }
+    } catch (error) {
+      console.error('❌ 画面共有の開始に失敗しました:', error);
+      
+      // より詳細なエラーメッセージ
+      if (error instanceof Error) {
+        if (error.name === 'NotAllowedError') {
+          alert('画面共有が許可されていません。ブラウザの設定を確認してください。');
+        } else if (error.name === 'NotSupportedError') {
+          alert('このブラウザは画面共有をサポートしていません。HTTPS環境で実行されているか確認してください。');
+        } else if (error.name === 'NotFoundError') {
+          alert('画面共有に使用できるディスプレイが見つかりません。');
+        } else if (error.message.includes('Not supported')) {
+          alert('画面共有はHTTPS環境でのみサポートされています。現在の環境を確認してください。');
+        } else {
+          alert(`画面共有の開始に失敗しました: ${error.message}`);
+        }
+      } else {
+        alert('画面共有の開始に失敗しました');
+      }
+    }
+  };
+
+  // 画面共有停止
+  const stopScreenSharing = () => {
+    if (screenStream) {
+      screenStream.getTracks().forEach(track => track.stop());
+      setScreenStream(null);
+      setIsScreenSharing(false);
+      
+      // ピア接続から画面共有トラックを削除
+      peerConnectionsRef.current.forEach((connection, socketId) => {
+        const senders = connection.getSenders();
+        senders.forEach(sender => {
+          if (sender.track?.kind === 'video') {
+            connection.removeTrack(sender);
+          }
+        });
+      });
+
+      console.log('⏹️ 画面共有を停止しました');
+      
+      // サーバーに画面共有停止を通知
+      if (socket && isInVoiceChannel) {
+        socket.emit('screen-share-stop', {
+          channelId,
+          userId: user?.id
+        });
+      }
+    }
+  };
+
+  // 画面共有切り替え
+  const toggleScreenSharing = () => {
+    if (isScreenSharing) {
+      stopScreenSharing();
+    } else {
+      startScreenSharing();
     }
   };
 
@@ -270,6 +430,28 @@ const VoiceChat: React.FC<VoiceChatProps> = ({ channelId }) => {
       audio.volume = isDeafened ? 0 : 1.0;
       audio.muted = isDeafened;
       audio.id = `audio-${remoteSocketId}`;
+
+      // リモート画面共有の表示
+      const videoTracks = event.streams[0].getVideoTracks();
+      if (videoTracks.length > 0) {
+        const video = document.createElement('video');
+        video.srcObject = event.streams[0];
+        video.autoplay = true;
+        video.controls = true;
+        video.style.width = '100%';
+        video.style.maxWidth = '400px';
+        video.style.borderRadius = '8px';
+        video.style.marginTop = '10px';
+        video.id = `video-${remoteSocketId}`;
+        
+        // 画面共有表示エリアに追加
+        const screenShareArea = document.getElementById('screen-share-area');
+        if (screenShareArea) {
+          screenShareArea.appendChild(video);
+        }
+        
+        console.log(`📺 リモート画面共有表示: ${remoteSocketId}`);
+      }
       
       // 音声再生の詳細ログ
       audio.onloadedmetadata = () => {
@@ -390,6 +572,8 @@ const VoiceChat: React.FC<VoiceChatProps> = ({ channelId }) => {
     console.log('  - ボイスユーザー数:', voiceUsers.length);
     console.log('  - デフ状態:', isDeafened ? 'ON' : 'OFF');
     console.log('  - ミュート状態:', isMuted ? 'ON' : 'OFF');
+    console.log('  - 画面共有状態:', isScreenSharing ? 'ON' : 'OFF');
+    console.log('  - 画面共有ストリーム:', screenStream ? '存在' : 'なし');
     peerConnectionsRef.current.forEach((pc, id) => {
       console.log(`  - 接続 ${id}:`, pc.connectionState, pc.iceConnectionState);
     });
@@ -406,6 +590,21 @@ const VoiceChat: React.FC<VoiceChatProps> = ({ channelId }) => {
     audioElements.forEach(audio => {
       console.log(`  - Audio要素 ${audio.id}: volume=${audio.volume}, muted=${audio.muted}`);
     });
+  };
+
+  // 開発者用：画面共有テスト
+  (window as any).testScreenShare = async () => {
+    try {
+      console.log('🧪 画面共有テスト開始...');
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: true,
+        audio: false
+      });
+      console.log('✅ 画面共有テスト成功:', stream.getVideoTracks().length, '個のビデオトラック');
+      stream.getTracks().forEach(track => track.stop());
+    } catch (error) {
+      console.error('❌ 画面共有テスト失敗:', error);
+    }
   };
 
   // 開発者用：接続を強制リセット
@@ -471,6 +670,24 @@ const VoiceChat: React.FC<VoiceChatProps> = ({ channelId }) => {
       remoteStreamsRef.current.delete(data.socketId);
     };
 
+    // ユーザーの状態更新を受信
+    const handleVoiceUserUpdate = (data: VoiceUser) => {
+      console.log(`📡 ユーザー状態更新受信: ${data.username}`, {
+        isMuted: data.isMuted,
+        isDeafened: data.isDeafened
+      });
+      
+      setVoiceUsers(prev => {
+        const updated = prev.map(user => 
+          user.socketId === data.socketId 
+            ? { ...user, isMuted: data.isMuted, isDeafened: data.isDeafened }
+            : user
+        );
+        console.log('🔄 ボイスユーザーリスト更新:', updated);
+        return updated;
+      });
+    };
+
     // 既存ユーザーリストを受信
     const handleVoiceUsersList = (users: VoiceUser[]) => {
       setVoiceUsers(users);
@@ -527,6 +744,7 @@ const VoiceChat: React.FC<VoiceChatProps> = ({ channelId }) => {
     socket.on('user-joined-voice', handleUserJoinedVoice);
     socket.on('user-left-voice', handleUserLeftVoice);
     socket.on('voice-users-list', handleVoiceUsersList);
+    socket.on('voice-user-update', handleVoiceUserUpdate);
     socket.on('webrtc-offer', handleWebRTCOffer);
     socket.on('webrtc-answer', handleWebRTCAnswer);
     socket.on('webrtc-ice-candidate', handleWebRTCCandidate);
@@ -536,6 +754,7 @@ const VoiceChat: React.FC<VoiceChatProps> = ({ channelId }) => {
       socket.off('user-joined-voice', handleUserJoinedVoice);
       socket.off('user-left-voice', handleUserLeftVoice);
       socket.off('voice-users-list', handleVoiceUsersList);
+      socket.off('voice-user-update', handleVoiceUserUpdate);
       socket.off('webrtc-offer', handleWebRTCOffer);
       socket.off('webrtc-answer', handleWebRTCAnswer);
       socket.off('webrtc-ice-candidate', handleWebRTCCandidate);
@@ -570,34 +789,51 @@ const VoiceChat: React.FC<VoiceChatProps> = ({ channelId }) => {
             className={`mute-btn ${isMuted ? 'muted' : ''}`}
             onClick={toggleMute}
           >
-            {isMuted ? '🔇' : '🎤'}
+            {isMuted ? <span className="muted-icon">🎤</span> : '🎤'}
           </button>
           <button 
             className={`deafen-btn ${isDeafened ? 'deafened' : ''}`}
             onClick={toggleDeafen}
           >
-            {isDeafened ? '🔇' : '🔊'}
+            {isDeafened ? <span className="deafened-icon">🔊</span> : '🔊'}
+          </button>
+          <button 
+            className={`screen-share-btn ${isScreenSharing ? 'sharing' : ''} ${!isInVoiceChannel ? 'disabled' : ''}`}
+            onClick={toggleScreenSharing}
+            disabled={!isInVoiceChannel}
+            title={!isInVoiceChannel ? 'ボイスチャンネルに参加してください' : (isScreenSharing ? '画面共有を停止' : '画面共有を開始')}
+          >
+            {isScreenSharing ? '⏹️' : '🖥️'}
           </button>
 
         </div>
       )}
 
       <div className="voice-users">
-        {isInVoiceChannel && (
-          <div className="voice-user local">
-            <span className="username">{user?.username}</span>
-            <span className="status">
-              {isMuted ? '🔇' : '🎤'} {isDeafened ? '🔇' : '🔊'}
+              {isInVoiceChannel && (
+        <div className="voice-user local">
+          <span className="username">{user?.username}</span>
+                      <span className="status">
+              {isMuted && <span className="muted-icon">🎤</span>}
+              {isDeafened && <span className="deafened-icon">🔊</span>}
             </span>
-          </div>
-        )}
+        </div>
+      )}
         
         {voiceUsers.map(user => (
           <div key={user.socketId} className="voice-user remote">
             <span className="username">{user.username}</span>
-            <span className="status">🎤 🔊</span>
+            <span className="status">
+              {user.isMuted && <span className="muted-icon">🎤</span>}
+              {user.isDeafened && <span className="deafened-icon">🔊</span>}
+            </span>
           </div>
         ))}
+      </div>
+
+      {/* 画面共有表示エリア */}
+      <div id="screen-share-area" className="screen-share-area">
+        {/* リモート画面共有がここに表示される */}
       </div>
     </div>
   );

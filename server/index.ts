@@ -1,5 +1,6 @@
 import express from 'express';
-import { createServer } from 'http';
+import { createServer } from 'https';
+import { readFileSync } from 'fs';
 import { Server } from 'socket.io';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -14,10 +15,17 @@ import { setupWebRTCHandlers } from './webrtc';
 dotenv.config();
 
 const app = express();
-const server = createServer(app);
+
+// 自己署名証明書の設定
+const httpsOptions = {
+  key: readFileSync('./localhost-key.pem'),
+  cert: readFileSync('./localhost.pem')
+};
+
+const server = createServer(httpsOptions, app);
 const io = new Server(server, {
   cors: {
-    origin: process.env.CLIENT_URL || "http://localhost:3000",
+    origin: process.env.CLIENT_URL || "https://localhost:3000",
     methods: ["GET", "POST"]
   }
 });
@@ -50,7 +58,7 @@ const PORT = process.env.PORT || 3001;
 // ミドルウェア
 app.use(helmet());
 app.use(cors({
-  origin: process.env.CLIENT_URL || "http://localhost:3000",
+  origin: process.env.CLIENT_URL || "https://localhost:3000",
   credentials: true
 }));
 app.use(express.json());

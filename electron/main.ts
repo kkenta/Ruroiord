@@ -13,7 +13,8 @@ function createWindow(): void {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      preload: path.join(__dirname, 'preload.js')
+      preload: path.join(__dirname, 'preload.js'),
+      webSecurity: false // 自己署名証明書を許可
     },
     titleBarStyle: 'default',
     show: false
@@ -26,21 +27,28 @@ function createWindow(): void {
     const http = require('http');
     
     function checkViteServer(port: number): Promise<boolean> {
-      return new Promise((resolve) => {
-        const req = http.get(`http://localhost:${port}`, (res: any) => {
-          resolve(res.statusCode === 200);
-        });
-        
-        req.on('error', () => {
-          resolve(false);
-        });
-        
-        req.setTimeout(1000, () => {
-          req.destroy();
-          resolve(false);
-        });
-      });
-    }
+  return new Promise((resolve) => {
+    const https = require('https');
+    const req = https.get(`https://localhost:${port}`, {
+      rejectUnauthorized: false,
+      requestCert: false,
+      agent: false,
+      timeout: 2000
+    }, (res: any) => {
+      resolve(res.statusCode === 200);
+    });
+    
+    req.on('error', (err: any) => {
+      console.log(`ポート ${port} のエラー:`, err.message);
+      resolve(false);
+    });
+    
+    req.setTimeout(2000, () => {
+      req.destroy();
+      resolve(false);
+    });
+  });
+}
     
     async function findVitePort(): Promise<number> {
       // 一般的なViteポートを順番にチェック
@@ -60,14 +68,14 @@ function createWindow(): void {
     
     // Viteサーバーのポートを検出して接続
     findVitePort().then((port) => {
-      console.log(`開発モード: http://localhost:${port} に接続中...`);
-      mainWindow?.loadURL(`http://localhost:${port}`);
+      console.log(`開発モード: https://localhost:${port} に接続中...`);
+      mainWindow?.loadURL(`https://localhost:${port}`);
       mainWindow?.webContents.openDevTools();
     }).catch((error) => {
       console.error('Viteサーバーに接続できません:', error.message);
-      // フォールバック: 本番モードで起動
-      console.log('本番モード: dist/index.html を読み込み中...');
-      mainWindow?.loadFile(path.join(__dirname, '../dist/index.html'));
+      console.log('手動でポート3000に接続を試行...');
+      mainWindow?.loadURL('https://localhost:3000');
+      mainWindow?.webContents.openDevTools();
     });
   } else {
     console.log('本番モード: dist/index.html を読み込み中...');
@@ -82,6 +90,34 @@ function createWindow(): void {
     mainWindow = null;
   });
 }
+
+// 自己署名証明書のエラーを無視
+app.on('certificate-error', (event, webContents, url, error, certificate, callback) => {
+  event.preventDefault();
+  callback(true); // 証明書エラーを無視
+});
+
+// セキュリティポリシーを設定
+app.on('web-contents-created', (event, contents) => {
+  contents.on('will-navigate', (event, navigationUrl) => {
+    event.preventDefault();
+  });
+  
+  contents.setWindowOpenHandler(({ url }) => {
+    return { action: 'deny' };
+  });
+});
+
+// 証明書を信頼する設定
+app.commandLine.appendSwitch('ignore-certificate-errors');
+app.commandLine.appendSwitch('ignore-ssl-errors');
+app.commandLine.appendSwitch('ignore-certificate-errors-spki-list');
+app.commandLine.appendSwitch('allow-insecure-localhost');
+app.commandLine.appendSwitch('disable-web-security');
+app.commandLine.appendSwitch('disable-features', 'VizDisplayCompositor');
+app.commandLine.appendSwitch('ignore-certificate-errors-spki-list', 'localhost');
+app.commandLine.appendSwitch('ignore-certificate-errors-spki-list', '127.0.0.1');
+app.commandLine.appendSwitch('ignore-certificate-errors-spki-list', '::1');
 
 app.whenReady().then(createWindow);
 

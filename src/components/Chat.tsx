@@ -6,6 +6,7 @@ import Sidebar from './Sidebar';
 import MessageList from './MessageList';
 import MessageInput from './MessageInput';
 import VoiceChat from './VoiceChat';
+import VoiceChannelView from './VoiceChannelView';
 import './Chat.css';
 
 interface Message {
@@ -85,7 +86,7 @@ const Chat: React.FC = () => {
       const token = localStorage.getItem('token');
       if (!token) return;
 
-      const response = await fetch(`http://localhost:3001/api/messages/channels/${currentChannel.id}/messages?limit=50`, {
+      const response = await fetch(`https://localhost:3001/api/messages/channels/${currentChannel.id}/messages?limit=50`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -162,17 +163,12 @@ const Chat: React.FC = () => {
                           <MessageInput onSendMessage={handleSendMessage} />
                         </>
                       ) : (
-                        <div className="voice-channel-content">
-                          <div className="voice-channel-info">
-                            <h3>🔊 ボイスチャンネル</h3>
-                            <p>このチャンネルでは音声での会話ができます。</p>
-                          </div>
-                        </div>
+                        <VoiceChannelView 
+                          channelId={currentChannel.id} 
+                          channelName={currentChannel.name} 
+                        />
                       )}
                     </div>
-                    {currentChannel?.type === 'voice' && (
-                      <VoiceChat channelId={currentChannel.id} />
-                    )}
       </div>
     </div>
   );

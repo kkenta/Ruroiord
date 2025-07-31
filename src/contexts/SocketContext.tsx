@@ -31,7 +31,7 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
       socket.disconnect();
     }
 
-    const newSocket = io('http://localhost:3001', {
+    const newSocket = io('https://localhost:3001', {
       auth: {
         token
       }

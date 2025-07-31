@@ -42,6 +42,8 @@ const Sidebar: React.FC<SidebarProps> = ({
     y: 0
   });
 
+
+
   const sidebarRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
 
@@ -82,6 +84,12 @@ const Sidebar: React.FC<SidebarProps> = ({
     }
   };
 
+  // ボイスチャンネルクリック時の処理
+  const handleChannelClick = (channel: Channel) => {
+    // すべてのチャンネルで通常通りチャンネルを変更
+    onChannelChange(channel);
+  };
+
   // ESCキーでメニューを閉じる
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -116,7 +124,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               <button
                 key={channel.id}
                 className={`channel-item ${currentChannel.id === channel.id ? 'active' : ''}`}
-                onClick={() => onChannelChange(channel)}
+                onClick={() => handleChannelClick(channel)}
                 onContextMenu={(e) => handleContextMenu(e, channel)}
               >
                 <span className="channel-icon">
@@ -160,6 +168,8 @@ const Sidebar: React.FC<SidebarProps> = ({
         onDeleteChannel={contextMenu.channel ? handleDeleteChannel : undefined}
         channelName={contextMenu.channel?.name}
       />
+
+
     </div>
   );
 };

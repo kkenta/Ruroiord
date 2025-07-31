@@ -42,7 +42,7 @@ export const ChannelProvider: React.FC<ChannelProviderProps> = ({ children }) =>
       }
 
       console.log('📡 APIリクエスト送信中...');
-      const response = await fetch('http://localhost:3001/api/channels', {
+      const response = await fetch('https://localhost:3001/api/channels', {
         headers: {
           'Authorization': `Bearer ${token}`
         }

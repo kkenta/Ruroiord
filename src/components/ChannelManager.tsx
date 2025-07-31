@@ -39,7 +39,7 @@ const ChannelManager: React.FC = () => {
       const token = localStorage.getItem('token');
       if (!token) return;
 
-      const response = await fetch('http://localhost:3001/api/channels', {
+      const response = await fetch('https://localhost:3001/api/channels', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -66,7 +66,7 @@ const ChannelManager: React.FC = () => {
       const token = localStorage.getItem('token');
       if (!token) return;
 
-      const response = await fetch(`http://localhost:3001/api/channels/${channelId}`, {
+      const response = await fetch(`https://localhost:3001/api/channels/${channelId}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`
@@ -97,7 +97,7 @@ const ChannelManager: React.FC = () => {
       const token = localStorage.getItem('token');
       if (!token) return;
 
-      const response = await fetch(`http://localhost:3001/api/channels/${editingChannel.id}`, {
+      const response = await fetch(`https://localhost:3001/api/channels/${editingChannel.id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

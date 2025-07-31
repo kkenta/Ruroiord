@@ -5,6 +5,8 @@ interface VoiceUser {
   username: string;
   socketId: string;
   channelId: string;
+  isMuted?: boolean;
+  isDeafened?: boolean;
 }
 
 interface WebRTCOffer {
@@ -64,6 +66,15 @@ export function setupWebRTCHandlers(io: Server) {
       
       socket.emit('voice-users-list', channelUsers);
       
+      // 新しい参加者を他のユーザーに通知
+      socket.to(`voice-${channelId}`).emit('user-joined-voice', {
+        userId,
+        username,
+        socketId: socket.id,
+        isMuted: false,
+        isDeafened: false
+      });
+      
       console.log(`✅ ユーザー ${username} がボイスチャンネル ${channelId} に参加しました (接続数: ${channelUsers.length + 1})`);
     });
 
@@ -109,6 +120,66 @@ export function setupWebRTCHandlers(io: Server) {
       socket.to(data.to).emit('webrtc-ice-candidate', {
         from: socket.id,
         candidate: data.candidate
+      });
+    });
+
+    // ユーザーの状態更新
+    socket.on('voice-user-update', (data: { channelId: string; userId: string; username: string; isMuted?: boolean; isDeafened?: boolean }) => {
+      const { channelId, userId, username, isMuted, isDeafened } = data;
+      
+      console.log(`📡 ユーザー状態更新: ${username} (ミュート: ${isMuted}, デフ: ${isDeafened})`);
+      
+      // ユーザー情報を更新
+      const user = voiceUsers.get(socket.id);
+      if (user && user.channelId === channelId) {
+        user.isMuted = isMuted;
+        user.isDeafened = isDeafened;
+        voiceUsers.set(socket.id, user);
+        
+        // 他のユーザーに通知
+        socket.to(`voice-${channelId}`).emit('voice-user-update', {
+          userId,
+          username,
+          socketId: socket.id,
+          isMuted,
+          isDeafened
+        });
+      }
+    });
+
+    // ボイスチャンネル参加者リスト取得
+    socket.on('get-voice-participants', (data: { channelId: string }) => {
+      const { channelId } = data;
+      
+      // チャンネル内の全ユーザーを取得（自分も含める）
+      const channelUsers = Array.from(voiceUsers.values())
+        .filter(user => user.channelId === channelId);
+      
+      socket.emit('voice-participants-list', channelUsers);
+    });
+
+    // 画面共有開始
+    socket.on('screen-share-start', (data: { channelId: string; userId: string; username: string; stream: MediaStream }) => {
+      const { channelId, userId, username } = data;
+      console.log(`🖥️ 画面共有開始: ${username} (チャンネル: ${channelId})`);
+      
+      // 他のユーザーに画面共有開始を通知
+      socket.to(`voice-${channelId}`).emit('screen-share-start', {
+        userId,
+        username,
+        socketId: socket.id
+      });
+    });
+
+    // 画面共有停止
+    socket.on('screen-share-stop', (data: { channelId: string; userId: string }) => {
+      const { channelId, userId } = data;
+      console.log(`⏹️ 画面共有停止: ${userId} (チャンネル: ${channelId})`);
+      
+      // 他のユーザーに画面共有停止を通知
+      socket.to(`voice-${channelId}`).emit('screen-share-stop', {
+        userId,
+        socketId: socket.id
       });
     });
 
