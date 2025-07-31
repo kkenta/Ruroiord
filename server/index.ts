@@ -22,6 +22,29 @@ const io = new Server(server, {
   }
 });
 
+// 利用可能なポートを自動で選択する関数
+function findAvailablePort(startPort: number): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const net = require('net');
+    const server = net.createServer();
+    
+    server.listen(startPort, () => {
+      const port = server.address().port;
+      server.close(() => {
+        resolve(port);
+      });
+    });
+    
+    server.on('error', (err: any) => {
+      if (err.code === 'EADDRINUSE') {
+        findAvailablePort(startPort + 1).then(resolve).catch(reject);
+      } else {
+        reject(err);
+      }
+    });
+  });
+}
+
 const PORT = process.env.PORT || 3001;
 
 // ミドルウェア
@@ -52,9 +75,17 @@ async function startServer() {
     await initDatabase();
     console.log('データベースが初期化されました');
     
-    server.listen(PORT, () => {
-      console.log(`サーバーがポート ${PORT} で起動しました`);
+    // 利用可能なポートを自動で選択
+    const availablePort = await findAvailablePort(parseInt(PORT.toString()));
+    console.log(`ポート ${PORT} が使用中のため、ポート ${availablePort} を使用します`);
+    
+    server.listen(availablePort, () => {
+      console.log(`サーバーがポート ${availablePort} で起動しました`);
       console.log(`環境: ${process.env.NODE_ENV || 'development'}`);
+      
+      // ポート情報をファイルに保存（Electronが読み取るため）
+      const fs = require('fs');
+      fs.writeFileSync('./server-port.txt', availablePort.toString());
     });
   } catch (error) {
     console.error('サーバー起動エラー:', error);

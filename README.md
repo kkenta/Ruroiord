@@ -57,6 +57,25 @@ cp env.example .env
 
 ### 開発サーバーの起動
 
+#### Windows環境
+Windows環境では、以下のバッチファイルを使用できます：
+
+**開発モード（推奨）**：
+```cmd
+dev-ruroiord.bat
+```
+
+**本番モード**：
+```cmd
+start-ruroiord.bat
+```
+
+**停止**：
+```cmd
+stop-ruroiord.bat
+```
+
+#### 手動起動
 1. バックエンドサーバーを起動
 ```bash
 npm run server:dev

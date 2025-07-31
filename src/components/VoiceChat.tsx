@@ -124,12 +124,25 @@ const VoiceChat: React.FC<VoiceChatProps> = ({ channelId }) => {
 
   // デフ切り替え
   const toggleDeafen = () => {
-    setIsDeafened(!isDeafened);
+    const newDeafenedState = !isDeafened;
+    setIsDeafened(newDeafenedState);
+    
+    console.log(`🔊 デフ状態変更: ${newDeafenedState ? 'ON' : 'OFF'}`);
+    
     // リモートストリームの音声を切り替え
-    remoteStreamsRef.current.forEach(stream => {
+    remoteStreamsRef.current.forEach((stream, socketId) => {
       stream.getAudioTracks().forEach(track => {
-        track.enabled = !isDeafened;
+        track.enabled = !newDeafenedState;
+        console.log(`🎧 音声トラック ${socketId}: ${track.enabled ? '有効' : '無効'}`);
       });
+    });
+    
+    // Audio要素の音量も制御
+    const audioElements = document.querySelectorAll('audio[id^="audio-"]') as NodeListOf<HTMLAudioElement>;
+    audioElements.forEach(audio => {
+      audio.volume = newDeafenedState ? 0 : 1.0;
+      audio.muted = newDeafenedState;
+      console.log(`🔊 Audio要素音量設定: ${audio.id} = ${newDeafenedState ? '0' : '1.0'}`);
     });
   };
 
@@ -180,6 +193,37 @@ const VoiceChat: React.FC<VoiceChatProps> = ({ channelId }) => {
   };
 
   // WebRTC接続の確立
+  // 再接続機能
+  const reconnectPeer = (remoteSocketId: string) => {
+    console.log(`🔄 ピア再接続中: ${remoteSocketId}`);
+    
+    // 既存の接続を閉じる
+    const existingConnection = peerConnectionsRef.current.get(remoteSocketId);
+    if (existingConnection) {
+      existingConnection.close();
+      peerConnectionsRef.current.delete(remoteSocketId);
+    }
+    
+    // 新しい接続を作成
+    const newConnection = createPeerConnection(remoteSocketId);
+    
+    // Offerを作成して送信
+    newConnection.createOffer()
+      .then(offer => newConnection.setLocalDescription(offer))
+      .then(() => {
+        if (socket) {
+          socket.emit('webrtc-offer', {
+            from: socket.id,
+            to: remoteSocketId,
+            offer: newConnection.localDescription
+          });
+        }
+      })
+      .catch(error => {
+        console.error(`❌ 再接続Offer作成失敗: ${remoteSocketId}`, error);
+      });
+  };
+
   const createPeerConnection = (remoteSocketId: string) => {
     console.log(`🔗 WebRTC接続確立中: ${remoteSocketId}`);
     
@@ -189,17 +233,12 @@ const VoiceChat: React.FC<VoiceChatProps> = ({ channelId }) => {
         { urls: 'stun:stun1.l.google.com:19302' },
         { urls: 'stun:stun2.l.google.com:19302' },
         { urls: 'stun:stun3.l.google.com:19302' },
-        { urls: 'stun:stun4.l.google.com:19302' },
-        { urls: 'stun:stun.ekiga.net' },
-        { urls: 'stun:stun.ideasip.com' },
-        { urls: 'stun:stun.schlund.de' },
-        { urls: 'stun:stun.stunprotocol.org:3478' },
-        { urls: 'stun:stun.voiparound.com' },
-        { urls: 'stun:stun.voipbuster.com' },
-        { urls: 'stun:stun.voipstunt.com' },
-        { urls: 'stun:stun.voxgratia.org' }
+        { urls: 'stun:stun4.l.google.com:19302' }
       ],
-      iceCandidatePoolSize: 10
+      iceCandidatePoolSize: 5,
+      iceTransportPolicy: 'all',
+      bundlePolicy: 'max-bundle',
+      rtcpMuxPolicy: 'require'
     });
 
     // ローカルストリームを追加
@@ -216,11 +255,20 @@ const VoiceChat: React.FC<VoiceChatProps> = ({ channelId }) => {
       console.log('📊 トラック情報:', event.track.kind, 'ID:', event.track.id);
       remoteStreamsRef.current.set(remoteSocketId, event.streams[0]);
       
+      // デフ状態を適用
+      if (isDeafened) {
+        event.streams[0].getAudioTracks().forEach(track => {
+          track.enabled = false;
+        });
+        console.log(`🔇 デフ状態のため音声トラックを無効化: ${remoteSocketId}`);
+      }
+      
       // リモート音声の再生
       const audio = new Audio();
       audio.srcObject = event.streams[0];
       audio.autoplay = true;
-      audio.volume = 1.0;
+      audio.volume = isDeafened ? 0 : 1.0;
+      audio.muted = isDeafened;
       audio.id = `audio-${remoteSocketId}`;
       
       // 音声再生の詳細ログ
@@ -236,9 +284,23 @@ const VoiceChat: React.FC<VoiceChatProps> = ({ channelId }) => {
         console.error(`❌ 音声再生エラー: ${remoteSocketId}`, e);
       };
       
-      audio.play().catch(e => {
-        console.error(`❌ 音声再生失敗: ${remoteSocketId}`, e);
-      });
+      // 音声再生を確実に開始
+      const playAudio = async () => {
+        try {
+          await audio.play();
+          console.log(`✅ 音声再生成功: ${remoteSocketId}`);
+        } catch (e) {
+          console.error(`❌ 音声再生失敗: ${remoteSocketId}`, e);
+          // 再試行
+          setTimeout(() => {
+            audio.play().catch(e2 => {
+              console.error(`❌ 音声再生再試行失敗: ${remoteSocketId}`, e2);
+            });
+          }, 1000);
+        }
+      };
+      
+      playAudio();
     };
 
     // ICE Candidateの処理
@@ -256,10 +318,27 @@ const VoiceChat: React.FC<VoiceChatProps> = ({ channelId }) => {
     // 接続状態の監視
     peerConnection.onconnectionstatechange = () => {
       console.log(`🔗 接続状態変更 (${remoteSocketId}): ${peerConnection.connectionState}`);
+      if (peerConnection.connectionState === 'connected') {
+        console.log(`✅ WebRTC接続確立完了: ${remoteSocketId}`);
+      } else if (peerConnection.connectionState === 'failed' || peerConnection.connectionState === 'disconnected') {
+        console.log(`❌ WebRTC接続失敗/切断: ${remoteSocketId}`);
+        // 接続が失敗した場合、再接続を試行
+        setTimeout(() => {
+          if (peerConnectionsRef.current.has(remoteSocketId)) {
+            console.log(`🔄 再接続を試行中: ${remoteSocketId}`);
+            reconnectPeer(remoteSocketId);
+          }
+        }, 3000);
+      }
     };
 
     peerConnection.oniceconnectionstatechange = () => {
       console.log(`🧊 ICE接続状態変更 (${remoteSocketId}): ${peerConnection.iceConnectionState}`);
+      if (peerConnection.iceConnectionState === 'connected') {
+        console.log(`✅ ICE接続確立: ${remoteSocketId}`);
+      } else if (peerConnection.iceConnectionState === 'failed') {
+        console.log(`❌ ICE接続失敗: ${remoteSocketId}`);
+      }
     };
 
     peerConnection.onicegatheringstatechange = () => {
@@ -268,6 +347,8 @@ const VoiceChat: React.FC<VoiceChatProps> = ({ channelId }) => {
 
     peerConnection.onicecandidateerror = (event) => {
       console.error(`❌ ICE候補エラー (${remoteSocketId}):`, event);
+      // ICE候補エラーが発生しても接続を継続
+      console.log(`🔄 ICE候補エラーを無視して接続を継続: ${remoteSocketId}`);
     };
 
     peerConnectionsRef.current.set(remoteSocketId, peerConnection);
@@ -307,8 +388,23 @@ const VoiceChat: React.FC<VoiceChatProps> = ({ channelId }) => {
     console.log('  - リモートストリーム数:', remoteStreamsRef.current.size);
     console.log('  - ローカルストリーム:', localStreamRef.current ? '存在' : 'なし');
     console.log('  - ボイスユーザー数:', voiceUsers.length);
+    console.log('  - デフ状態:', isDeafened ? 'ON' : 'OFF');
+    console.log('  - ミュート状態:', isMuted ? 'ON' : 'OFF');
     peerConnectionsRef.current.forEach((pc, id) => {
       console.log(`  - 接続 ${id}:`, pc.connectionState, pc.iceConnectionState);
+    });
+    
+    // 音声トラックの状態も確認
+    remoteStreamsRef.current.forEach((stream, id) => {
+      stream.getAudioTracks().forEach(track => {
+        console.log(`  - 音声トラック ${id}: ${track.enabled ? '有効' : '無効'}`);
+      });
+    });
+    
+    // Audio要素の状態も確認
+    const audioElements = document.querySelectorAll('audio[id^="audio-"]') as NodeListOf<HTMLAudioElement>;
+    audioElements.forEach(audio => {
+      console.log(`  - Audio要素 ${audio.id}: volume=${audio.volume}, muted=${audio.muted}`);
     });
   };
 
@@ -322,6 +418,25 @@ const VoiceChat: React.FC<VoiceChatProps> = ({ channelId }) => {
     remoteStreamsRef.current.clear();
     setVoiceUsers([]);
     console.log('✅ ボイス接続をリセットしました');
+  };
+
+  // 開発者用：接続状態を定期的にチェック
+  (window as any).startConnectionMonitoring = () => {
+    console.log('🔍 接続監視を開始');
+    const interval = setInterval(() => {
+      peerConnectionsRef.current.forEach((pc, id) => {
+        if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
+          console.log(`⚠️ 不安定な接続を検出: ${id} (${pc.connectionState})`);
+          reconnectPeer(id);
+        }
+      });
+    }, 10000); // 10秒ごとにチェック
+    
+    // グローバルに保存して停止できるようにする
+    (window as any).stopConnectionMonitoring = () => {
+      clearInterval(interval);
+      console.log('🛑 接続監視を停止');
+    };
   };
 
     // ユーザーがボイスチャンネルに参加
